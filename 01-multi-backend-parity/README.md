@@ -1,8 +1,9 @@
 # 01. Multi-Backend Parity Harness
 
-**Status: in progress.** Step 0 of 8 complete -- backends surveyed, third
-backend chosen, environments built and verified against the GPU. No parity
-measurements yet.
+**Status: in progress.** Steps 0 and 1 of 8 complete -- backends surveyed,
+third backend chosen, environments built and verified against the GPU, and
+the harness skeleton written. No parity measurements yet: the first adapter
+lands at step 2.
 
 | Environment | Verified | Result |
 |---|---|---|
@@ -114,6 +115,27 @@ label can mean different things in different backends.*
   results/
 ```
 
+## Design decisions
+
+Two of these correct gaps in the original sketch rather than choosing
+between options.
+
+| | Decision | Why |
+|---|---|---|
+| D1 | `logits()` takes token ids, not a string | Letting each backend tokenise its own prompt would mix tokeniser differences into the measurement. Tokenise once upstream, feed every backend the same integers |
+| D2 | Adapters are context managers | The model is 10.25GB against 11.9GB of VRAM. Two backends cannot be resident at once, so teardown is mandatory -- and a `with` block cannot be forgotten the way an `unload()` call can |
+| D3 | Logits are cached to disk under a versioned path | Backends run sequentially and are compared afterwards from files. The version guard stops results produced under an older definition of "logits" from silently mixing with fresh ones. The sidecar stores the token ids, so a later session can prove two backends saw the same input |
+| D4 | The comparator reports numbers and makes no judgement | Thresholds live in configs and are applied downstream. Keeping judgement out of the comparator means a disappointing result cannot be fixed by widening a tolerance |
+| D5 | `meta()` preserves backend strings verbatim | Requesting `awq` from vLLM may get you `awq_marlin`. Normalising now discards detail that cannot be recovered later |
+| D6 | Determinism is asserted in code, not checklisted | `load()` calls `logits()` twice and compares bytes. A backend that cannot reproduce itself fails immediately, rather than contributing noise that looks like a kernel difference days later |
+
 ## Reproducing
 
-Instructions land here once step 1 produces something runnable.
+The skeleton has no model dependency yet, so its self-check runs anywhere:
+
+```bash
+cd 01-multi-backend-parity
+python -m tests.test_harness
+```
+
+Backend adapters arrive at steps 2, 3, 5 and 6 and need the GPU machine.
