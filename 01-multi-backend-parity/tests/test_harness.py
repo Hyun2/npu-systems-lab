@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from harness.adapters.base import BackendAdapter, NonDeterministicBackend  # noqa: E402
 from harness.cache import load_logits, logit_path, save_logits  # noqa: E402
 from harness.compare import compare, kl_divergence, softmax  # noqa: E402
+from harness.inspect import group_parameters  # noqa: E402
 from harness.prompts import PROMPTS, build_long_prompt, by_id  # noqa: E402
 
 
@@ -194,6 +195,29 @@ def test_prompt_set_shape() -> None:
     # long prompt must clear the 512-token sliding window by a wide margin;
     # word count is a conservative proxy for token count
     assert len(build_long_prompt().split()) > 1500
+
+
+def test_parameter_groups_reconcile() -> None:
+    named = [
+        ("model.embed_tokens.weight", 400),
+        ("model.embed_tokens_per_layer.weight", 250),
+        ("model.layers.0.self_attn.q_proj.weight", 30),
+        ("model.layers.0.mlp.up_proj.weight", 60),
+        ("model.layers.0.input_layernorm.weight", 4),
+        ("model.some_future_thing.weight", 7),
+    ]
+    groups = group_parameters(named)
+
+    # Per-layer embeddings must not be swallowed by the plain embedding
+    # bucket -- separating them is the whole point of the step-4 hypothesis
+    # that one quantiser skipped them and the other did not.
+    assert groups["per_layer_embeddings"]["params"] == 250
+    assert groups["embeddings"]["params"] == 400
+
+    # Nothing may vanish: an unrecognised name lands in `other`, and the
+    # group totals still add up to the input total.
+    assert groups["other"]["params"] == 7
+    assert sum(g["params"] for g in groups.values()) == sum(n for _, n in named)
 
 
 if __name__ == "__main__":

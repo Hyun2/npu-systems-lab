@@ -25,7 +25,7 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["SEMANTICS_VERSION", "logit_path", "save_logits", "load_logits", "have_logits"]
+__all__ = ["SEMANTICS_VERSION", "logit_path", "save_logits", "load_logits", "have_logits", "slug"]
 
 # Bump only when the semantics of a stored logit array change.
 SEMANTICS_VERSION = 1
@@ -33,7 +33,8 @@ SEMANTICS_VERSION = 1
 _SAFE = str.maketrans({"/": "__", " ": "_", ":": "-"})
 
 
-def _slug(s: str) -> str:
+def slug(s: str) -> str:
+    """Make a model or backend id safe to use as one path segment."""
     return s.translate(_SAFE)
 
 
@@ -49,10 +50,10 @@ def logit_path(
         Path(root)
         / "logits"
         / f"v{SEMANTICS_VERSION}"
-        / _slug(model)
-        / _slug(backend)
-        / _slug(precision)
-        / f"{_slug(prompt_id)}.npy"
+        / slug(model)
+        / slug(backend)
+        / slug(precision)
+        / f"{slug(prompt_id)}.npy"
     )
 
 

@@ -1,8 +1,11 @@
 # 01. 멀티 백엔드 수치 정합성(Parity) 검증 하네스
 
-**상태: 진행 중.** 8단계 중 0~1단계 완료 -- 백엔드 조사, 3번째 백엔드 확정,
-환경 3종 구축 및 GPU 동작 검증, 하네스 뼈대 작성. 정합성 측정값은 아직 없다.
-첫 어댑터는 2단계에서 나온다.
+**상태: 진행 중.** 8단계 중 0~2단계 완료 -- 백엔드 조사, 3번째 백엔드 확정,
+환경 3종 구축 및 GPU 동작 검증, 하네스 뼈대, **PyTorch 레퍼런스 확보**.
+백엔드 간 정합성 측정값은 아직 없다. 첫 비교는 3단계에서 나온다.
+
+2단계 결과는 [`results/reference/README.md`](results/reference/README.md)에
+있다 -- 텍스트 전용 VRAM 실측, 파라미터 분포, 어텐션 배치.
 
 ## 답하려는 질문
 
@@ -36,8 +39,13 @@ PyTorch 레퍼런스 -> 백엔드 어댑터 -> 양자화 계층 -> logit parity 
 E2B의 "E"는 *effective*(유효)를 뜻한다. 체크포인트에 실제로 담긴 파라미터는
 5.1B(bf16에서 10.25GB)이고, Per-Layer Embeddings(PLE, 층마다 따로 두는 작은
 임베딩 테이블)가 연산에 관여하는 수를 2.3B 근처로 낮춘다. 텍스트 전용으로 올리면
-vision(약 150M)과 audio(약 300M) 인코더를 건너뛰어 9.3GB 정도가 되고, 이것이
-12GB 카드에 들어가는 이유다.
+vision(약 150M)과 audio(약 300M) 인코더를 건너뛴다.
+
+**2단계 실측**: 텍스트 타워는 파라미터 4.63B, 가중치 9.26GB, 로드 시 카드에서
+9.37GB가 사라진다 (여유 3.00GB). 그중 2.39B(51.6%)가 PLE 테이블 하나
+(`embed_tokens_per_layer`, 262144 x 8960)이고, 이를 빼면 연산에 관여하는 것은
+2.24B -- "effective 2B"의 실체다. 자세한 내용은
+[`results/reference/README.md`](results/reference/README.md).
 
 하네스가 특정 모델에 종속되지 않았는지 확인할 대조군:
 `meta-llama/Llama-3.2-1B-Instruct`.
@@ -101,6 +109,8 @@ OpenVINO IR이 int4에서도 그 부분을 2.35GB짜리 별도 파일로 유지�
 | D4 | 비교기는 **숫자만 내고 판정하지 않는다** | 임계값은 설정 파일에 두고 하류에서 적용한다. 판정을 비교기 밖에 두면, 결과가 나쁠 때 임계값을 넓혀 해결하는 길이 막힌다 |
 | D5 | `meta()`는 백엔드 문자열을 **원문 그대로** 보존한다 | vLLM에 `awq`를 요청해도 `awq_marlin`이 돌아갈 수 있다. 지금 정규화하면 나중에 필요해질 정보가 사라지고, 되돌릴 수 없다 |
 | D6 | 결정론성을 체크리스트가 아니라 **코드로** 확인한다 | `load()`가 `logits()`를 두 번 호출해 바이트를 비교한다. 자기 자신을 재현하지 못하는 백엔드는 그 자리에서 실패한다. 며칠 뒤에 커널 차이처럼 보이는 잡음으로 나타나지 않는다 |
+| D7 | 로드 후 **`missing_keys`가 비어 있는지 확인**한다 (2단계에서 추가) | transformers는 체크포인트에 없는 파라미터를 무작위로 채우고 조용히 진행한다. 실제로 Gemma 4를 텍스트 전용으로 열었을 때 가중치가 **하나도** 로드되지 않은 채 logits가 나왔다. 레퍼런스가 잡음이면 이후 8단계가 전부 무의미하다 |
+| D8 | 레퍼런스는 **eager attention**으로 돌린다 (2단계에서 추가) | sdpa와 flash 커널은 reduction 순서를 바꾼다. 그 차이는 3단계가 재려는 대상이지, baseline에 섞어 둘 것이 아니다. 요청값과 실제 적용값을 둘 다 기록한다 |
 
 ## 실행
 
@@ -111,7 +121,15 @@ cd 01-multi-backend-parity
 python -m tests.test_harness
 ```
 
-백엔드 어댑터는 2·3·5·6단계에서 추가되며 GPU machine이 필요하다.
+레퍼런스 생성은 GPU 머신에서 돌린다. 프롬프트 5종의 logits, VRAM 실측,
+파라미터 분포가 **한 번의 로드에서** 나온다 -- 카드에 모델이 하나만
+들어가므로 로드가 가장 비싼 부분이다.
+
+```bash
+python -m harness.reference --model google/gemma-4-E2B-it --precision bf16
+```
+
+나머지 백엔드 어댑터는 3·5·6단계에서 추가되며 역시 GPU 머신이 필요하다.
 
 ## 구조
 
@@ -121,8 +139,12 @@ python -m tests.test_harness
     adapters/    백엔드마다 하나. 공통 인터페이스 뒤에 둔다
     compare.py   logit 비교기
     inspect.py   체크포인트 해부 -- 도구가 실제로 무엇을 저장했는가
+    reference.py 2단계 실행기. 레퍼런스 logits + VRAM + 구조 분석
     report.py    결과 표 생성
   configs/
   results/
   tests/
 ```
+
+`adapters/pytorch.py`는 `adapters/__init__.py`에서 import하지 않는다. torch를
+끌어오기 때문에 CUDA가 없는 편집용 머신에서 자체 검사가 깨진다.

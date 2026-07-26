@@ -1,0 +1,59 @@
+{
+  "model": "google/gemma-4-E2B-it",
+  "backend": "pytorch",
+  "precision": "bf16",
+  "prompt_id": "short-factual",
+  "vocab_size": 262144,
+  "dtype": "float32",
+  "semantics_version": 1,
+  "written_utc": "2026-07-26T15:16:32+00:00",
+  "token_ids": [
+    818,
+    5279,
+    529,
+    7001,
+    563
+  ],
+  "backend_meta": {
+    "backend": "pytorch",
+    "transformers_version": "5.14.1",
+    "torch_version": "2.13.0+cu130",
+    "cuda_device": "NVIDIA GeForce RTX 3060",
+    "requested": {
+      "precision": "bf16",
+      "dtype": "torch.bfloat16",
+      "attn_implementation": "eager",
+      "model_path": "google/gemma-4-E2B-it",
+      "device": "cuda"
+    },
+    "model_class": "Gemma4ForCausalLM",
+    "config_class": "Gemma4TextConfig",
+    "model_type": "gemma4_text",
+    "effective_attn_implementation": "eager",
+    "effective_dtype": "torch.bfloat16",
+    "num_hidden_layers": 35,
+    "vocab_size": 262144,
+    "param_count": 4628569344,
+    "loading_info_counts": {
+      "missing_keys": 0,
+      "unexpected_keys": 1400,
+      "mismatched_keys": 0,
+      "error_msgs": 0
+    },
+    "vram": {
+      "torch_allocated_bytes": 9257160704,
+      "torch_reserved_bytes": 9357492224,
+      "device_used_bytes": 9374269440,
+      "device_total_bytes": 12488343552,
+      "device_free_after_load_bytes": 2995650560
+    },
+    "run": {
+      "prompt_id": "short-factual",
+      "category": "short",
+      "n_tokens": 5,
+      "latency_seconds": 0.1488,
+      "peak_allocated_bytes": 9270939136,
+      "vocab_size": 262144
+    }
+  }
+}
