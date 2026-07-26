@@ -1,0 +1,31 @@
+# Environments
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Model weights and converted artifacts -- these live on the run machine only
+models/
+*.gguf
+*.safetensors
+*.onnx
+*.onnx_data
+*.bin
+*.pte
+*.xml.bin
+
+# Large intermediate tensors. Summary tables and plots under results/ ARE committed;
+# raw logit dumps are not.
+**/results/raw/
+*.npy
+*.npz
+*.pt
+
+# Local-only helpers
+_refs
+CLAUDE.local.md
+.env
+
+# OS
+.DS_Store
