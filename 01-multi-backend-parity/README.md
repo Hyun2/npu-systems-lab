@@ -1,7 +1,15 @@
 # 01. Multi-Backend Parity Harness
 
-**Status: in progress.** Step 0 of 8 -- backend survey done, environment
-setup underway. No measurements yet.
+**Status: in progress.** Step 0 of 8 complete -- backends surveyed, third
+backend chosen, environments built and verified against the GPU. No parity
+measurements yet.
+
+| Environment | Verified | Result |
+|---|---|---|
+| PyTorch | `torch.cuda.is_available()` plus a real bf16 matmul | torch 2.13.0+cu130, transformers 5.14.1, RTX 3060 cap 8.6, 11.52 GiB free |
+| vLLM | `nvidia-smi` inside the container | GPU visible via CDI (`--device nvidia.com/gpu=all`, not `--gpus`) |
+| llama.cpp | `llama-cli --list-devices` | `CUDA0: NVIDIA GeForce RTX 3060 (11909 MiB)`, built for arch 86 only |
+| OpenVINO | not yet | built at step 6 |
 
 ## The question
 
