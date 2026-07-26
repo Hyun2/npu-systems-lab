@@ -1,141 +1,128 @@
-# 01. Multi-Backend Parity Harness
+# 01. 멀티 백엔드 수치 정합성(Parity) 검증 하네스
 
-**Status: in progress.** Steps 0 and 1 of 8 complete -- backends surveyed,
-third backend chosen, environments built and verified against the GPU, and
-the harness skeleton written. No parity measurements yet: the first adapter
-lands at step 2.
+**상태: 진행 중.** 8단계 중 0~1단계 완료 -- 백엔드 조사, 3번째 백엔드 확정,
+환경 3종 구축 및 GPU 동작 검증, 하네스 뼈대 작성. 정합성 측정값은 아직 없다.
+첫 어댑터는 2단계에서 나온다.
 
-| Environment | Verified | Result |
-|---|---|---|
-| PyTorch | `torch.cuda.is_available()` plus a real bf16 matmul | torch 2.13.0+cu130, transformers 5.14.1, RTX 3060 cap 8.6, 11.52 GiB free |
-| vLLM | `nvidia-smi` inside the container | GPU visible via CDI (`--device nvidia.com/gpu=all`, not `--gpus`) |
-| llama.cpp | `llama-cli --list-devices` | `CUDA0: NVIDIA GeForce RTX 3060 (11909 MiB)`, built for arch 86 only |
-| OpenVINO | not yet | built at step 6 |
+## 답하려는 질문
 
-## The question
+추론 백엔드 두 개에 같은 모델을 올렸는데 logits가 다르게 나온다.
+**이 차이는 받아들일 수 있는 수치 오차인가, 포팅 버그인가?**
 
-Two inference backends load the same model and return different logits.
-Is that difference acceptable numerical noise, or a bug in the port?
+눈으로 판단하는 방식은 확장되지 않는다. 이 프로젝트는 그 질문에 **숫자와 명시된
+임계값으로** 답하는 하네스를 만들고, 그 하네스로 백엔드 4종과 양자화 4계층을
+비교한다.
 
-Answering it by eye does not scale. This project builds a harness that
-answers it with a number and a stated threshold, then uses that harness to
-compare four quantization tiers across four backends.
-
-## Approach
+## 접근
 
 ```
-PyTorch reference  ->  backend adapters  ->  quantization tiers  ->  logit parity + accuracy + profiling
+PyTorch 레퍼런스 -> 백엔드 어댑터 -> 양자화 계층 -> logit parity + 정확도 + 프로파일링
 ```
 
-The controlling idea is to establish an **FP16-to-FP16 baseline first**.
-Before any quantization is applied, PyTorch and vLLM are compared running
-the same weights at the same precision. Whatever difference shows up there
-is pure implementation difference -- kernel selection, reduction order,
-attention backend. Every later measurement is read against that floor,
-so quantization loss is never confused with porting noise.
+핵심은 **FP16끼리의 baseline을 먼저 세우는 것**이다. 양자화를 적용하기 전에,
+같은 가중치를 같은 정밀도로 올린 PyTorch와 vLLM을 먼저 비교한다. 거기서 나오는
+차이는 순수한 구현 차이 -- 커널 선택, reduction 순서, attention 백엔드 -- 다.
+이후의 모든 측정값은 그 바닥값을 기준으로 읽으므로, **양자화 손실이 포팅 잡음과
+섞이지 않는다.**
 
-Self-written code is deliberately limited to glue and instrumentation:
-the adapter interface, the comparator, a checkpoint inspector, and the
-report generator. Quantization, serving and evaluation are done with the
-tools the industry actually uses.
+직접 작성하는 코드는 glue와 계측에 한정한다: 어댑터 인터페이스, 비교기,
+체크포인트 해부기, 리포트 생성기. 양자화·서빙·평가는 업계에서 실제로 쓰는
+도구에 맡긴다.
 
-## Target model
+## 대상 모델
 
-`google/gemma-4-E2B-it`, text-only configuration. Apache 2.0, released
-2026-03-31.
+`google/gemma-4-E2B-it`, 텍스트 전용 구성. Apache 2.0, 2026-03-31 릴리스.
 
-The "E" in E2B means *effective* parameters. The checkpoint holds 5.1B
-parameters (10.25GB in bf16); Per-Layer Embeddings keep the
-compute-active count near 2.3B. Text-only loading skips the vision
-(~150M) and audio (~300M) encoders, landing around 9.3GB -- which is what
-makes this fit a 12GB card at all.
+E2B의 "E"는 *effective*(유효)를 뜻한다. 체크포인트에 실제로 담긴 파라미터는
+5.1B(bf16에서 10.25GB)이고, Per-Layer Embeddings(PLE, 층마다 따로 두는 작은
+임베딩 테이블)가 연산에 관여하는 수를 2.3B 근처로 낮춘다. 텍스트 전용으로 올리면
+vision(약 150M)과 audio(약 300M) 인코더를 건너뛰어 9.3GB 정도가 되고, 이것이
+12GB 카드에 들어가는 이유다.
 
-Secondary model for cross-checking harness generality:
+하네스가 특정 모델에 종속되지 않았는지 확인할 대조군:
 `meta-llama/Llama-3.2-1B-Instruct`.
 
-## Backends
+## 백엔드
 
-Surveyed 2026-07-26 against vendor documentation and source.
+2026-07-26에 벤더 문서와 소스를 직접 확인했다.
 
-| Backend | Status | Evidence |
+| 백엔드 | 상태 | 근거 |
 |---|---|---|
-| PyTorch / Transformers | Reference | `Gemma4ForConditionalGeneration` |
-| vLLM | Supported | Listed in supported models with model-specific notes; merged PRs from 2026-04-03, three days after release |
-| llama.cpp | Supported | Google publishes official QAT GGUF for E2B |
-| OpenVINO | Supported, adopted as third backend | OpenVINO org publishes an E2B IR, split into per-layer-embedding / language-model / vision files |
-| ONNX Runtime | Deferred | Runtime registers `gemma4` and `gemma4_text`, but the official `builder.py` has no Gemma4 branch. Conversion path unproven |
-| ExecuTorch | Deferred | No Gemma reference in official LLM docs or examples |
+| PyTorch / Transformers | 레퍼런스 | `Gemma4ForConditionalGeneration` |
+| vLLM | 지원 | 지원 모델 목록에 등재 + 모델별 주석. 릴리스 3일 뒤인 2026-04-03부터 PR 병합 |
+| llama.cpp | 지원 | Google이 E2B용 공식 QAT GGUF를 배포 |
+| OpenVINO | 지원, **3번째 백엔드로 채택** | OpenVINO 조직이 E2B IR 배포. PLE / language model / vision이 파일 단위로 분리돼 있다 |
+| ONNX Runtime | 보류 | 런타임에는 `gemma4`·`gemma4_text`가 등록돼 있으나 공식 변환기 `builder.py`에 Gemma4 분기가 없다. 변환 경로 미검증 |
+| ExecuTorch | 보류 | 공식 LLM 문서와 예제에 Gemma 언급이 없다 |
 
-The third-backend choice was reversed during the survey. ONNX Runtime was
-the original first pick for being framework-independent; it lost to
-OpenVINO because runtime support and conversion support turned out to be
-different things. Both deferred backends remain on the extension list with
-explicit time boxes.
+**3번째 백엔드 선택은 조사 중에 뒤집혔다.** 프레임워크 독립성 때문에 ONNX Runtime을
+1순위로 잡았으나, **런타임 지원과 변환기 지원이 다른 문제**라는 것이 드러나
+OpenVINO에 밀렸다. 보류한 둘은 버리지 않고 확장 목록에 타임박스와 함께 남겼다.
 
-## Quantization tiers
+## 양자화 4계층
 
-Four tiers of increasing sophistication, so the accuracy-versus-effort
-curve is visible rather than asserted.
+정교함이 다른 4계층을 같은 하네스로 재서, 정확도 대 노력의 곡선을 주장이 아니라
+그래프로 보이게 한다.
 
-| Tier | Method | Artifact |
+| 계층 | 방법 | 산출물 |
 |---|---|---|
 | 1 | Round-to-nearest | llama.cpp `Q4_0` |
 | 2 | k-quant | llama.cpp `Q4_K_M` |
-| 3 | Calibration-based | AWQ (group sizes 128 / 64 / 32), GPTQ |
-| 4 | Quantization-aware training | `google/gemma-4-E2B-it-qat-w4a16-ct`, `...-qat-q4_0-gguf` |
+| 3 | 보정(calibration) 기반 | AWQ (group size 128 / 64 / 32), GPTQ |
+| 4 | 양자화 인식 학습(QAT) | `google/gemma-4-E2B-it-qat-w4a16-ct`, `...-qat-q4_0-gguf` |
 
-### An open question found during the survey
+### 조사 중에 발견한 미해결 질문
 
-Google ships the same QAT model in two formats, both labelled 4-bit:
+Google은 같은 QAT 모델을 두 형식으로 배포하는데, 둘 다 4비트라고 적혀 있다.
 
-| Artifact | Size | Reduction from bf16 (10.25GB) |
+| 산출물 | 크기 | bf16(10.25GB) 대비 |
 |---|---|---|
-| `qat-w4a16-ct` (compressed-tensors) | 8.35GB | 19 percent |
-| `qat-q4_0-gguf` (llama.cpp) | 3.35GB + 0.99GB mmproj | 67 percent |
+| `qat-w4a16-ct` (compressed-tensors) | 8.35GB | 19% 감소 |
+| `qat-q4_0-gguf` (llama.cpp) | 3.35GB + mmproj 0.99GB | 67% 감소 |
 
-A 2.5x gap between two artifacts of the same model at the same nominal bit
-width. The working hypothesis is that the compressed-tensors build leaves
-the Per-Layer Embedding tables unquantized -- OpenVINO's IR keeps those in
-a separate 2.35GB file even at int4, which is suggestive.
+같은 모델을 같은 명목 비트폭으로 만들었는데 **2.5배 차이**가 난다. 작업 가설은
+compressed-tensors 쪽이 PLE 임베딩 테이블을 양자화하지 않고 남겼다는 것이다.
+OpenVINO IR이 int4에서도 그 부분을 2.35GB짜리 별도 파일로 유지하는 것이 방증이다.
 
-Confirming or refuting this is the first job of the checkpoint inspector,
-because it is this project's central claim in miniature: *the same "4-bit"
-label can mean different things in different backends.*
+이 가설을 확인하거나 뒤집는 것이 체크포인트 해부기의 첫 번째 일이다. **이
+프로젝트의 핵심 주장이 축소판으로 들어 있기 때문이다 -- 같은 "4비트" 표기가
+백엔드마다 다른 것을 뜻한다.**
 
-## Layout
+## 설계 결정
 
-```
-01-multi-backend-parity/
-  harness/
-    adapters/    one adapter per backend, behind a single interface
-    compare.py   logit comparator
-    inspect.py   checkpoint anatomy -- what did the tool actually store
-    report.py    results table generation
-  configs/
-  results/
-```
+아래 둘(D2, D3)은 선택지 중 고른 것이 아니라 **원래 설계에 빠져 있던 것**을
+채운 것이다.
 
-## Design decisions
-
-Two of these correct gaps in the original sketch rather than choosing
-between options.
-
-| | Decision | Why |
+| | 결정 | 근거 |
 |---|---|---|
-| D1 | `logits()` takes token ids, not a string | Letting each backend tokenise its own prompt would mix tokeniser differences into the measurement. Tokenise once upstream, feed every backend the same integers |
-| D2 | Adapters are context managers | The model is 10.25GB against 11.9GB of VRAM. Two backends cannot be resident at once, so teardown is mandatory -- and a `with` block cannot be forgotten the way an `unload()` call can |
-| D3 | Logits are cached to disk under a versioned path | Backends run sequentially and are compared afterwards from files. The version guard stops results produced under an older definition of "logits" from silently mixing with fresh ones. The sidecar stores the token ids, so a later session can prove two backends saw the same input |
-| D4 | The comparator reports numbers and makes no judgement | Thresholds live in configs and are applied downstream. Keeping judgement out of the comparator means a disappointing result cannot be fixed by widening a tolerance |
-| D5 | `meta()` preserves backend strings verbatim | Requesting `awq` from vLLM may get you `awq_marlin`. Normalising now discards detail that cannot be recovered later |
-| D6 | Determinism is asserted in code, not checklisted | `load()` calls `logits()` twice and compares bytes. A backend that cannot reproduce itself fails immediately, rather than contributing noise that looks like a kernel difference days later |
+| D1 | `logits()`는 문자열이 아니라 **토큰 ID**를 받는다 | 백엔드마다 자기 토크나이저로 자르게 두면 토크나이즈 차이가 측정값에 섞인다. 한 번만 토크나이즈해서 같은 정수열을 모든 백엔드에 먹인다 |
+| D2 | 어댑터는 **컨텍스트 매니저**다 | 모델 10.25GB에 VRAM 11.9GB. 두 백엔드가 동시에 상주할 수 없으므로 해제는 필수이고, `with` 블록은 `unload()` 호출과 달리 **잊을 수가 없다** |
+| D3 | logits를 **버전이 붙은 경로**로 디스크에 캐시한다 | 백엔드를 순차 실행하고 나중에 파일로 비교한다. 버전 가드가 없으면 옛 정의로 만든 결과가 새 결과와 조용히 섞인다. 사이드카에 토큰 ID를 저장해, 두 백엔드가 같은 입력을 받았음을 가정이 아니라 증명으로 확인한다 |
+| D4 | 비교기는 **숫자만 내고 판정하지 않는다** | 임계값은 설정 파일에 두고 하류에서 적용한다. 판정을 비교기 밖에 두면, 결과가 나쁠 때 임계값을 넓혀 해결하는 길이 막힌다 |
+| D5 | `meta()`는 백엔드 문자열을 **원문 그대로** 보존한다 | vLLM에 `awq`를 요청해도 `awq_marlin`이 돌아갈 수 있다. 지금 정규화하면 나중에 필요해질 정보가 사라지고, 되돌릴 수 없다 |
+| D6 | 결정론성을 체크리스트가 아니라 **코드로** 확인한다 | `load()`가 `logits()`를 두 번 호출해 바이트를 비교한다. 자기 자신을 재현하지 못하는 백엔드는 그 자리에서 실패한다. 며칠 뒤에 커널 차이처럼 보이는 잡음으로 나타나지 않는다 |
 
-## Reproducing
+## 실행
 
-The skeleton has no model dependency yet, so its self-check runs anywhere:
+뼈대는 아직 모델에 의존하지 않으므로 자체 검사는 어디서든 돌아간다.
 
 ```bash
 cd 01-multi-backend-parity
 python -m tests.test_harness
 ```
 
-Backend adapters arrive at steps 2, 3, 5 and 6 and need the GPU machine.
+백엔드 어댑터는 2·3·5·6단계에서 추가되며 GPU machine이 필요하다.
+
+## 구조
+
+```
+01-multi-backend-parity/
+  harness/
+    adapters/    백엔드마다 하나. 공통 인터페이스 뒤에 둔다
+    compare.py   logit 비교기
+    inspect.py   체크포인트 해부 -- 도구가 실제로 무엇을 저장했는가
+    report.py    결과 표 생성
+  configs/
+  results/
+  tests/
+```

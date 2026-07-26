@@ -1,41 +1,50 @@
 # NPU Systems Lab
 
-Hands-on projects across the NPU software stack: model optimization,
-quantization, multi-backend inference, runtime integration, and profiling.
+NPU 소프트웨어 스택 전반을 다루는 실습 프로젝트 모음. 모델 최적화, 양자화,
+멀티 백엔드 추론, 런타임 통합, 프로파일링.
 
-Each numbered directory is a self-contained project with its own README,
-code, and measured results. Nothing here is a tutorial reimplementation --
-the code is glue and instrumentation around production tools, and the
-output is measurements plus the reasoning behind them.
+번호가 붙은 디렉터리 하나가 독립된 프로젝트이고, 각자 README와 코드와 측정
+결과를 갖는다. 튜토리얼을 따라 만든 재구현은 없다. 직접 쓴 코드는 기성 도구를
+잇는 glue와 계측에 한정되고, 산출물은 측정값과 그 해석이다.
 
-## Projects
+## 프로젝트
 
-| # | Project | Focus | Status |
+| # | 프로젝트 | 다루는 것 | 상태 |
 |---|---|---|---|
-| 01 | [Multi-Backend Parity Harness](01-multi-backend-parity/) | Numerical parity of one model across PyTorch, vLLM, llama.cpp and OpenVINO, under four quantization tiers | In progress |
+| 01 | [멀티 백엔드 수치 정합성 하네스](01-multi-backend-parity/) | 한 모델을 PyTorch·vLLM·llama.cpp·OpenVINO에 올려 양자화 4계층에서 logit 정합성 비교 | 진행 중 |
 
-## Measurement environment
+## 측정 환경
 
-Every number in this repository is produced on one fixed machine, so
-results stay comparable across projects.
+이 저장소의 모든 수치는 **같은 machine 한 대**에서 나온다. 프로젝트 간 비교가
+성립하려면 환경이 고정돼 있어야 한다.
 
 | | |
 |---|---|
 | GPU | NVIDIA GeForce RTX 3060 12GB, Compute Capability 8.6 (Ampere) |
 | CPU | AMD Ryzen 7 5800X, 8C/16T |
 | RAM | 46GB |
-| Storage | NVMe SSD |
-| OS | Ubuntu 24.04.4 LTS, kernel 6.8, driver 580.159.03, CUDA 12.0 toolkit |
+| 저장장치 | NVMe SSD |
+| OS | Ubuntu 24.04.4 LTS, 커널 6.8, 드라이버 580.159.03, CUDA 12.0 툴킷 |
 
-When a project needs hardware this machine does not have -- FP8 requires
-Ada (8.9) or newer, for example -- that is stated in the project README
-rather than quietly worked around.
+이 machine에 없는 하드웨어가 필요한 경우 -- 예를 들어 FP8은 Ada(8.9) 이상이
+필요하다 -- 조용히 우회하지 않고 해당 프로젝트 README에 명시한다.
 
-## Conventions
+## 규약
 
-- Each project directory carries its own README with the question it
-  answers, the method, and the results table.
-- Results are committed. Model weights and virtual environments are not.
-- Where a measurement contradicts an initial assumption, both the
-  assumption and the correction are kept in the write-up. The correction
-  is usually the interesting part.
+- 프로젝트마다 README를 두고, 답하려는 질문·방법·결과 표를 담는다.
+- **결과는 커밋한다. 모델 가중치와 가상환경은 커밋하지 않는다.**
+- 측정값이 최초 가정과 어긋나면 **가정과 정정을 둘 다 남긴다.** 대개 정정 쪽이
+  더 흥미롭다.
+- 문서는 한글, 코드는 영문. 자세한 규칙은 `CLAUDE.md` 참조.
+
+## 두 머신에 걸쳐 작업하기
+
+편집은 로컬에서, 실행은 GPU machine에서 한다.
+
+```bash
+./sync.sh check          # 무엇이 다른가? 조용하면 일치
+./sync.sh push           # 로컬 -> 서버, 소스만
+./sync.sh pull-results   # 서버 -> 로컬, 커밋할 결과물만
+```
+
+접속 대상은 환경 변수로 바꾼다: `NPU_HOST=myserver ./sync.sh push`
