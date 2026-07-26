@@ -40,8 +40,12 @@ case "${1:-check}" in
   check)
     echo "Comparing ${LOCAL_DIR} -> ${REMOTE_HOST}:${REMOTE_DIR}"
     echo "(dry run -- nothing is modified. Empty output means in sync.)"
-    rsync -az --delete --dry-run --itemize-changes "${EXCLUDES[@]}" \
-      "${LOCAL_DIR}/" "${REMOTE_HOST}:${REMOTE_DIR}/"
+    # --checksum, and no -p/-t: compare file CONTENT only.
+    # git rewrites mtimes on clone and pull, so a timestamp-based comparison
+    # cries wolf after every git operation and stops being trustworthy.
+    rsync -rlzc --delete --dry-run --itemize-changes "${EXCLUDES[@]}" \
+      "${LOCAL_DIR}/" "${REMOTE_HOST}:${REMOTE_DIR}/" \
+      | grep -v '^\.d\.\.t\.\.\.\.\.$' || true
     ;;
 
   push)
