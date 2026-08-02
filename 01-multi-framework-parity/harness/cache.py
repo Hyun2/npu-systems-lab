@@ -123,9 +123,14 @@ def load_logits(
     # semantics_version and live in the same v1 path, so the version guard
     # cannot tell them apart. Fail here, where the file is named, rather than
     # let a caller hit KeyError somewhere far from the cause.
-    if "backend_meta" in meta and "framework_meta" not in meta:
+    # Any pre-rename key at all, not just a fully unconverted file: the two
+    # were renamed by hand, so one can be left behind. save_logits writes a
+    # fixed key set that never contains either, so a healthy sidecar cannot
+    # trip this.
+    stale = sorted({"backend", "backend_meta"} & meta.keys())
+    if stale:
         raise ValueError(
-            f"{meta_path} still uses the pre-rename keys "
-            "'backend'/'backend_meta'; rename them or re-measure"
+            f"{meta_path} still uses the pre-rename key(s) {stale}; "
+            "rename them or re-measure"
         )
     return arr, meta

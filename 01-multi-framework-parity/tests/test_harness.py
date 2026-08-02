@@ -139,23 +139,32 @@ def test_pre_rename_sidecar_is_rejected() -> None:
     Both spellings claim semantics_version 1 and share the v1 path, so the
     version guard cannot separate them. Loading must fail where the file is
     named, not with a KeyError in whatever reads the metadata later.
+
+    The two keys were renamed by hand, so a half-converted file is a real
+    shape, not a hypothetical one. Each is checked on its own.
     """
     rng = np.random.default_rng(3)
     arr = rng.normal(size=8).astype(np.float32)
+    shapes = {
+        "both keys stale": ["framework", "framework_meta"],
+        "only the top-level key stale": ["framework"],
+        "only the nested key stale": ["framework_meta"],
+    }
 
-    with tempfile.TemporaryDirectory() as tmp:
-        p = save_logits(tmp, "m", "pytorch", "bf16", "short-factual", arr, {"v": 1})
-        meta_path = p.with_suffix(".meta.json")
-        stale = json.loads(meta_path.read_text(encoding="utf-8"))
-        stale["backend"] = stale.pop("framework")
-        stale["backend_meta"] = stale.pop("framework_meta")
-        meta_path.write_text(json.dumps(stale), encoding="utf-8")
+    for label, revert in shapes.items():
+        with tempfile.TemporaryDirectory() as tmp:
+            p = save_logits(tmp, "m", "pytorch", "bf16", "short-factual", arr, {"v": 1})
+            meta_path = p.with_suffix(".meta.json")
+            stale = json.loads(meta_path.read_text(encoding="utf-8"))
+            for key in revert:
+                stale[key.replace("framework", "backend")] = stale.pop(key)
+            meta_path.write_text(json.dumps(stale), encoding="utf-8")
 
-        try:
-            load_logits(tmp, "m", "pytorch", "bf16", "short-factual")
-        except ValueError:
-            return
-        raise AssertionError("a pre-rename sidecar must not load silently")
+            try:
+                load_logits(tmp, "m", "pytorch", "bf16", "short-factual")
+            except ValueError:
+                continue
+            raise AssertionError(f"a pre-rename sidecar loaded silently: {label}")
 
 
 class _FlakyAdapter(FrameworkAdapter):
