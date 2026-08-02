@@ -16,6 +16,7 @@ numbers" from "different behaviour".
 from __future__ import annotations
 
 import json
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -180,12 +181,23 @@ def test_pre_rename_sidecar_is_rejected() -> None:
                 load_logits(tmp, "m", "pytorch", "bf16", "short-factual")
             except ValueError as err:
                 # The message has to name the keys that are actually stale --
-                # a caller cannot tell which sidecar to fix otherwise. Match
-                # them quoted: bare "backend" also matches inside
-                # "backend_meta", which lets a message that names the wrong
-                # key, or names none at all, keep this test green.
+                # a caller cannot tell which one to fix otherwise, and a guard
+                # that names the wrong key is worse than one that names none.
+                #
+                # Only the part before the first ";" is matched, because that
+                # is where the guard reports keys; advice after it is free
+                # text and may well mention "backend" on purpose. Word
+                # boundaries rather than quotes: "_" is a word character, so
+                # \bbackend\b does not match inside "backend_meta", and the
+                # test does not care how the list is rendered.
+                #
+                # It does not check that *only* these keys were reported.
+                # Parsing the message back into a set would cost more than the
+                # over-reporting guard it would catch.
+                reported = str(err).split(";", 1)[0]
                 for key in ("backend", "backend_meta"):
-                    assert (f"'{key}'" in str(err)) is (key in named), f"{label}: {err}"
+                    found = re.search(rf"\b{key}\b", reported) is not None
+                    assert found is (key in named), f"{label}: {err}"
                 continue
             raise AssertionError(f"a pre-rename sidecar loaded silently: {label}")
 
