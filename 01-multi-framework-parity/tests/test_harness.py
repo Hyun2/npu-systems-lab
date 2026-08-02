@@ -148,15 +148,27 @@ def test_pre_rename_sidecar_is_rejected() -> None:
     rng = np.random.default_rng(3)
     arr = rng.normal(size=8).astype(np.float32)
     shapes = {
-        "both keys stale": lambda m: m.update(
-            backend=m.pop("framework"), backend_meta=m.pop("framework_meta")
+        "both keys stale": (
+            lambda m: m.update(
+                backend=m.pop("framework"), backend_meta=m.pop("framework_meta")
+            ),
+            {"backend", "backend_meta"},
         ),
-        "only the top-level key stale": lambda m: m.update(backend=m.pop("framework")),
-        "only the nested key stale": lambda m: m.update(backend_meta=m.pop("framework_meta")),
-        "old and new spellings coexist": lambda m: m.update(backend_meta=m["framework_meta"]),
+        "only the top-level key stale": (
+            lambda m: m.update(backend=m.pop("framework")),
+            {"backend"},
+        ),
+        "only the nested key stale": (
+            lambda m: m.update(backend_meta=m.pop("framework_meta")),
+            {"backend_meta"},
+        ),
+        "old and new spellings coexist": (
+            lambda m: m.update(backend_meta=m["framework_meta"]),
+            {"backend_meta"},
+        ),
     }
 
-    for label, mangle in shapes.items():
+    for label, (mangle, named) in shapes.items():
         with tempfile.TemporaryDirectory() as tmp:
             p = save_logits(tmp, "m", "pytorch", "bf16", "short-factual", arr, {"v": 1})
             meta_path = p.with_suffix(".meta.json")
@@ -167,9 +179,13 @@ def test_pre_rename_sidecar_is_rejected() -> None:
             try:
                 load_logits(tmp, "m", "pytorch", "bf16", "short-factual")
             except ValueError as err:
-                # The message has to name the offending key, or a caller
-                # cannot tell which sidecar to fix.
-                assert "backend" in str(err), f"{label}: message names no key"
+                # The message has to name the keys that are actually stale --
+                # a caller cannot tell which sidecar to fix otherwise. Match
+                # them quoted: bare "backend" also matches inside
+                # "backend_meta", which lets a message that names the wrong
+                # key, or names none at all, keep this test green.
+                for key in ("backend", "backend_meta"):
+                    assert (f"'{key}'" in str(err)) is (key in named), f"{label}: {err}"
                 continue
             raise AssertionError(f"a pre-rename sidecar loaded silently: {label}")
 
