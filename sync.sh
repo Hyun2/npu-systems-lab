@@ -30,6 +30,7 @@ EXCLUDES=(
   --exclude 'results/'
   --exclude '_refs'
   --exclude 'CLAUDE.local.md'
+  --exclude '.serena/'
   --exclude '.DS_Store'
   --exclude '*.gguf'
   --exclude '*.safetensors'
