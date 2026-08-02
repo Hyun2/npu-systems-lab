@@ -26,6 +26,7 @@ models/
 _refs
 CLAUDE.local.md
 .env
+.serena/
 
 # OS
 .DS_Store
