@@ -184,17 +184,21 @@ def test_pre_rename_sidecar_is_rejected() -> None:
                 # a caller cannot tell which one to fix otherwise, and a guard
                 # that names the wrong key is worse than one that names none.
                 #
-                # Only the part before the first ";" is matched, because that
-                # is where the guard reports keys; advice after it is free
-                # text and may well mention "backend" on purpose. Word
-                # boundaries rather than quotes: "_" is a word character, so
-                # \bbackend\b does not match inside "backend_meta", and the
+                # Match only where the guard reports keys: drop the sidecar
+                # path, then keep what precedes the first ";". Both of the
+                # discarded parts can carry the word on their own -- advice
+                # like "rename backend -> framework", or a temp root under a
+                # directory named 01-multi-backend-parity -- and matching them
+                # turns a correct guard red.
+                #
+                # Word boundaries rather than quotes: "_" is a word character,
+                # so \bbackend\b does not match inside "backend_meta", and the
                 # test does not care how the list is rendered.
                 #
                 # It does not check that *only* these keys were reported.
                 # Parsing the message back into a set would cost more than the
                 # over-reporting guard it would catch.
-                reported = str(err).split(";", 1)[0]
+                reported = str(err).replace(str(meta_path), "").split(";", 1)[0]
                 for key in ("backend", "backend_meta"):
                     found = re.search(rf"\b{key}\b", reported) is not None
                     assert found is (key in named), f"{label}: {err}"
