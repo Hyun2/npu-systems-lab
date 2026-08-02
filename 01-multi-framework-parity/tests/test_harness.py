@@ -15,6 +15,7 @@ numbers" from "different behaviour".
 
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -130,6 +131,31 @@ def test_cache_roundtrip_and_versioned_path() -> None:
         assert meta["token_ids"] == [1, 2, 3]
         assert meta["framework_meta"]["framework_version"] == "torch 2.13.0+cu130"
         assert meta["vocab_size"] == 64
+
+
+def test_pre_rename_sidecar_is_rejected() -> None:
+    """A v1 sidecar can predate the backend -> framework rename.
+
+    Both spellings claim semantics_version 1 and share the v1 path, so the
+    version guard cannot separate them. Loading must fail where the file is
+    named, not with a KeyError in whatever reads the metadata later.
+    """
+    rng = np.random.default_rng(3)
+    arr = rng.normal(size=8).astype(np.float32)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        p = save_logits(tmp, "m", "pytorch", "bf16", "short-factual", arr, {"v": 1})
+        meta_path = p.with_suffix(".meta.json")
+        stale = json.loads(meta_path.read_text(encoding="utf-8"))
+        stale["backend"] = stale.pop("framework")
+        stale["backend_meta"] = stale.pop("framework_meta")
+        meta_path.write_text(json.dumps(stale), encoding="utf-8")
+
+        try:
+            load_logits(tmp, "m", "pytorch", "bf16", "short-factual")
+        except ValueError:
+            return
+        raise AssertionError("a pre-rename sidecar must not load silently")
 
 
 class _FlakyAdapter(FrameworkAdapter):

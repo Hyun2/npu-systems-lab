@@ -119,4 +119,13 @@ def load_logits(
     arr = np.load(path)
     meta_path = path.with_suffix(".meta.json")
     meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+    # Sidecars written before the backend -> framework rename carry the same
+    # semantics_version and live in the same v1 path, so the version guard
+    # cannot tell them apart. Fail here, where the file is named, rather than
+    # let a caller hit KeyError somewhere far from the cause.
+    if "backend_meta" in meta and "framework_meta" not in meta:
+        raise ValueError(
+            f"{meta_path} still uses the pre-rename keys "
+            "'backend'/'backend_meta'; rename them or re-measure"
+        )
     return arr, meta

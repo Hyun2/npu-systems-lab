@@ -57,12 +57,21 @@ case "${1:-check}" in
   pull-results)
     # Results are generated on the server and committed from here.
     # Raw tensor dumps stay behind -- see .gitignore.
+    # Errors are NOT suppressed. A missing remote path means the server has
+    # not run this project yet, or a directory was renamed here but not there.
+    # Reporting success either way is worse than failing: the caller commits
+    # whatever is already on disk and believes it came from the server.
+    failed=0
     for d in "${LOCAL_DIR}"/[0-9][0-9]-*/; do
       proj="$(basename "$d")"
       mkdir -p "${d}results"
-      rsync -az --itemize-changes --exclude 'raw/' \
-        "${REMOTE_HOST}:${REMOTE_DIR}/${proj}/results/" "${d}results/" 2>/dev/null || true
+      if ! rsync -az --itemize-changes --exclude 'raw/' \
+        "${REMOTE_HOST}:${REMOTE_DIR}/${proj}/results/" "${d}results/"; then
+        echo "FAILED ${proj} -- is ${REMOTE_DIR}/${proj}/results/ there?" >&2
+        failed=1
+      fi
     done
+    [ "$failed" -eq 0 ] || { echo "pull-results incomplete" >&2; exit 1; }
     echo "pulled results into ${LOCAL_DIR}"
     ;;
 
