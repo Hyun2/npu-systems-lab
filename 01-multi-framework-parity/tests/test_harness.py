@@ -141,28 +141,35 @@ def test_pre_rename_sidecar_is_rejected() -> None:
     named, not with a KeyError in whatever reads the metadata later.
 
     The two keys were renamed by hand, so a half-converted file is a real
-    shape, not a hypothetical one. Each is checked on its own.
+    shape, not a hypothetical one. Each is checked on its own, and the last
+    shape is a copy rather than a rename -- it keeps the modern key, which a
+    guard that pairs the keys up would wrongly accept.
     """
     rng = np.random.default_rng(3)
     arr = rng.normal(size=8).astype(np.float32)
     shapes = {
-        "both keys stale": ["framework", "framework_meta"],
-        "only the top-level key stale": ["framework"],
-        "only the nested key stale": ["framework_meta"],
+        "both keys stale": lambda m: m.update(
+            backend=m.pop("framework"), backend_meta=m.pop("framework_meta")
+        ),
+        "only the top-level key stale": lambda m: m.update(backend=m.pop("framework")),
+        "only the nested key stale": lambda m: m.update(backend_meta=m.pop("framework_meta")),
+        "old and new spellings coexist": lambda m: m.update(backend_meta=m["framework_meta"]),
     }
 
-    for label, revert in shapes.items():
+    for label, mangle in shapes.items():
         with tempfile.TemporaryDirectory() as tmp:
             p = save_logits(tmp, "m", "pytorch", "bf16", "short-factual", arr, {"v": 1})
             meta_path = p.with_suffix(".meta.json")
             stale = json.loads(meta_path.read_text(encoding="utf-8"))
-            for key in revert:
-                stale[key.replace("framework", "backend")] = stale.pop(key)
+            mangle(stale)
             meta_path.write_text(json.dumps(stale), encoding="utf-8")
 
             try:
                 load_logits(tmp, "m", "pytorch", "bf16", "short-factual")
-            except ValueError:
+            except ValueError as err:
+                # The message has to name the offending key, or a caller
+                # cannot tell which sidecar to fix.
+                assert "backend" in str(err), f"{label}: message names no key"
                 continue
             raise AssertionError(f"a pre-rename sidecar loaded silently: {label}")
 
