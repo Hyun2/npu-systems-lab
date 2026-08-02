@@ -3,11 +3,11 @@
 Three categories, chosen because each exercises a different code path rather
 than because three is a nice number:
 
-- `short`  -- a few tokens. Nothing exotic runs; if backends disagree here,
+- `short`  -- a few tokens. Nothing exotic runs; if frameworks disagree here,
               the disagreement is in the basic forward pass.
 - `long`   -- over 2K tokens. Gemma 4 E2B uses a 512-token sliding window on
               most layers, so a long prompt crosses the boundary between
-              windowed and global attention. Backends implement that
+              windowed and global attention. Frameworks implement that
               boundary differently and a short prompt never reaches it.
 - `multi`  -- non-Latin scripts. The model covers 140+ languages and the
               tokeniser takes a different path for multi-byte text.

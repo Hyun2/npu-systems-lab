@@ -1,20 +1,20 @@
-"""The contract every backend must satisfy.
+"""The contract every framework must satisfy.
 
-Four backends (PyTorch, vLLM, llama.cpp, OpenVINO) are driven through one
+Four frameworks (PyTorch, vLLM, llama.cpp, OpenVINO) are driven through one
 interface so that a difference in their output can be attributed to the
-backend rather than to how each was called.
+framework rather than to how each was called.
 
 Two properties of this contract are load-bearing and easy to lose:
 
-1. `logits` takes token ids, never a string. If each backend tokenised its
+1. `logits` takes token ids, never a string. If each framework tokenised its
    own prompt, the measured difference would mix kernel behaviour with
    tokeniser behaviour, and the project could not tell them apart. Tokenise
-   once, upstream, and feed every backend the same integers.
+   once, upstream, and feed every framework the same integers.
 
 2. Loading is scoped. The reference model is 10.25GB against 11.9GB of
-   VRAM, so two backends cannot be resident at once. Adapters are context
+   VRAM, so two frameworks cannot be resident at once. Adapters are context
    managers and free their memory on exit -- forgetting to unload is not a
-   slow leak here, it is an out-of-memory error on the next backend.
+   slow leak here, it is an out-of-memory error on the next framework.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from typing import Any
 import numpy as np
 
 # Precision tags used across the project. The string is passed to the
-# adapter, which maps it onto whatever its backend actually calls the thing.
+# adapter, which maps it onto whatever its framework actually calls the thing.
 PRECISIONS = (
     "bf16",
     "fp16",
@@ -38,23 +38,23 @@ PRECISIONS = (
 )
 
 # A short, model-agnostic token sequence used only to check that a freshly
-# loaded backend returns the same numbers twice. Low token ids exist in every
+# loaded framework returns the same numbers twice. Low token ids exist in every
 # vocabulary we use (smallest is Llama 3.2 at 128,256), and the content is
 # irrelevant -- reproducibility is the only thing being measured.
 _DETERMINISM_PROBE: tuple[int, ...] = tuple(range(1, 17))
 
 
-class NonDeterministicBackend(RuntimeError):
-    """Raised when a backend returns different logits for the same input.
+class NonDeterministicFramework(RuntimeError):
+    """Raised when a framework returns different logits for the same input.
 
-    Measuring parity against a backend that cannot reproduce itself is
-    meaningless: any difference found later could be the backend disagreeing
-    with itself rather than with another backend.
+    Measuring parity against a framework that cannot reproduce itself is
+    meaningless: any difference found later could be the framework disagreeing
+    with itself rather than with another framework.
     """
 
 
-class BackendAdapter(ABC):
-    """Base class for backend adapters.
+class FrameworkAdapter(ABC):
+    """Base class for framework adapters.
 
     Subclasses implement the `_`-prefixed methods. The public `load` wraps
     `_load` so the determinism check cannot be skipped by forgetting to call
@@ -63,7 +63,7 @@ class BackendAdapter(ABC):
 
     # -- lifecycle ---------------------------------------------------------
 
-    def __enter__(self) -> "BackendAdapter":
+    def __enter__(self) -> "FrameworkAdapter":
         return self
 
     def __exit__(self, *exc: object) -> bool:
@@ -78,11 +78,11 @@ class BackendAdapter(ABC):
         check_determinism: bool = True,
         **kwargs: Any,
     ) -> None:
-        """Load a model, then verify the backend reproduces itself.
+        """Load a model, then verify the framework reproduces itself.
 
         Set `check_determinism=False` only when the cost of one extra forward
         pass matters and determinism has already been established for this
-        (backend, precision) pair in the same session.
+        (framework, precision) pair in the same session.
         """
         if precision not in PRECISIONS:
             raise ValueError(
@@ -122,7 +122,7 @@ class BackendAdapter(ABC):
     def meta(self) -> dict[str, Any]:
         """What actually ran, recorded verbatim.
 
-        Backend name and version, the kernel or op set actually selected,
+        Framework name and version, the kernel or op set actually selected,
         artifact size, memory used. Requesting `awq` from vLLM may get you
         `awq_marlin`; without this the resulting numbers cannot be explained.
 
@@ -137,7 +137,7 @@ class BackendAdapter(ABC):
         """Fail unless two identical calls produce byte-identical logits.
 
         Byte comparison rather than `==` so that NaN, which never equals
-        itself, does not read as nondeterminism -- a backend emitting NaN is
+        itself, does not read as nondeterminism -- a framework emitting NaN is
         broken, but it is a different fault and should surface as such.
         """
         probe = tuple(token_ids) if token_ids is not None else _DETERMINISM_PROBE
@@ -145,13 +145,13 @@ class BackendAdapter(ABC):
         second = self.logits(probe)
 
         if first.shape != second.shape or first.dtype != second.dtype:
-            raise NonDeterministicBackend(
+            raise NonDeterministicFramework(
                 f"{type(self).__name__}: shape/dtype changed between identical "
                 f"calls ({first.shape}/{first.dtype} then {second.shape}/{second.dtype})"
             )
         if first.tobytes() != second.tobytes():
             delta = float(np.abs(first.astype(np.float64) - second.astype(np.float64)).max())
-            raise NonDeterministicBackend(
+            raise NonDeterministicFramework(
                 f"{type(self).__name__}: identical input produced different logits "
                 f"(max delta {delta:.3e}). Check greedy decoding, thinking mode, "
                 f"seed, and batch size before measuring anything."

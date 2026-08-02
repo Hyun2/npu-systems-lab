@@ -1,6 +1,6 @@
 {
   "meta": {
-    "backend": "pytorch",
+    "framework": "pytorch",
     "transformers_version": "5.14.1",
     "torch_version": "2.13.0+cu130",
     "cuda_device": "NVIDIA GeForce RTX 3060",

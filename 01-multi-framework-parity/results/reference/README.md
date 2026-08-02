@@ -1,6 +1,6 @@
 # 2단계 -- PyTorch 레퍼런스 (google/gemma-4-E2B-it, bf16)
 
-이후 모든 백엔드가 이 숫자와 비교된다. 원시 데이터는
+이후 모든 추론 프레임워크가 이 숫자와 비교된다. 원시 데이터는
 `bf16-structure.json`에 있고, logits는 `results/logits/v1/`에 있다.
 
 ```bash
@@ -10,6 +10,11 @@ python -m harness.reference --model google/gemma-4-E2B-it --precision bf16
 **실행 환경**: RTX 3060 12GB, transformers 5.14.1, torch 2.13.0+cu130,
 `Gemma4ForCausalLM` / `Gemma4TextConfig`, eager attention (요청과 실제가
 일치), 결정론성 검사 통과, `missing_keys: 0`.
+
+> **사이드카 키 이름만 나중에 바뀌었다.** 이 디렉터리와 `results/logits/v1/`의
+> JSON은 `framework` · `framework_meta` 키를 쓰는데, 측정 당시에는 `backend` ·
+> `backend_meta`였다. **측정값은 재실행 없이 그대로이고 키 이름만 치환했다.**
+> 저장된 배열의 의미가 바뀐 것이 아니므로 `SEMANTICS_VERSION`은 v1 그대로다.
 
 ## 텍스트 전용 VRAM -- 계산값 9.3GB, 실측 9.37GB
 
@@ -32,7 +37,7 @@ python -m harness.reference --model google/gemma-4-E2B-it --precision bf16
 
 **긴 프롬프트가 진짜 제약이다.** 상주 8.62GiB는 여유롭지만, 1849토큰을
 한 번에 통과시키면 활성화 텐서가 1.82GiB를 더 쓴다. 여유 2.79GiB 중
-약 0.97GiB만 남는다. KV 캐시를 선점하는 백엔드에서는 이 여백이 먼저
+약 0.97GiB만 남는다. KV 캐시를 선점하는 추론 프레임워크에서는 이 여백이 먼저
 사라진다.
 
 ## 파라미터 분포 -- 임베딩이 60%다
@@ -83,8 +88,8 @@ full attention은 레이어 4, 9, 14, 19, 24, 29, 34 -- 정확히 5개마다
 부수적으로 확인한 것: `num_key_value_heads=1`(MQA), query head 8개,
 `head_dim=256`, `num_kv_shared_layers=20`.
 
-**긴 문맥에서 백엔드 간 차이가 커진다면 여기를 의심한다.** 512토큰
-경계는 짧은 프롬프트가 절대 건드리지 않고, 백엔드마다 마스크를 만드는
+**긴 문맥에서 추론 프레임워크 간 차이가 커진다면 여기를 의심한다.** 512토큰
+경계는 짧은 프롬프트가 절대 건드리지 않고, 추론 프레임워크마다 마스크를 만드는
 방식과 window 밖을 자르는 시점이 다르다. 프롬프트 세트에 1849토큰짜리를
 넣어둔 이유가 이것이다.
 

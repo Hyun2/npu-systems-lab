@@ -9,14 +9,14 @@ Two families of metric are reported side by side, and the distinction
 matters when reading results:
 
 - Raw-logit metrics (`max_abs_diff`, `mean_abs_diff`, `cosine`) see the
-  actual numbers a backend produced. They move if one backend offsets every
+  actual numbers a framework produced. They move if one framework offsets every
   logit by a constant.
 - Distribution metrics (`kl`, `top1_match`, `top5_overlap`) see only what the
   model would do next. Softmax is shift-invariant, so a constant offset is
   invisible to them.
 
 When the two families disagree -- large `max_abs_diff` but near-zero `kl` --
-the backends have not diverged in substance, they differ by an offset.
+the frameworks have not diverged in substance, they differ by an offset.
 `logit_shift` is reported to make that case immediately readable rather than
 something to be inferred.
 """
@@ -43,7 +43,7 @@ def kl_divergence(p: np.ndarray, q: np.ndarray) -> float:
     where q == 0 while p > 0 is genuinely infinite divergence: the target
     assigns zero probability to something the reference expects. That is
     reported as inf rather than smoothed away, because in this project it
-    means a backend underflowed and that is a finding, not noise.
+    means a framework underflowed and that is a finding, not noise.
     """
     p = np.asarray(p, dtype=np.float64)
     q = np.asarray(q, dtype=np.float64)
@@ -54,10 +54,10 @@ def kl_divergence(p: np.ndarray, q: np.ndarray) -> float:
 
 
 def compare(ref: np.ndarray, tgt: np.ndarray, *, topk: int = 5) -> dict[str, float | bool | int]:
-    """Compare a target backend's logits against the reference's.
+    """Compare a target framework's logits against the reference's.
 
     Both arrays are next-token logits over the same vocabulary, as returned
-    by `BackendAdapter.logits`. Computation is in float64 regardless of the
+    by `FrameworkAdapter.logits`. Computation is in float64 regardless of the
     input dtype, so that the comparison itself does not contribute error to
     the thing being measured.
     """

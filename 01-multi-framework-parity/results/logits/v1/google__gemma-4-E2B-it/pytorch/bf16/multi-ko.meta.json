@@ -1,21 +1,21 @@
 {
   "model": "google/gemma-4-E2B-it",
-  "backend": "pytorch",
+  "framework": "pytorch",
   "precision": "bf16",
-  "prompt_id": "short-factual",
+  "prompt_id": "multi-ko",
   "vocab_size": 262144,
   "dtype": "float32",
   "semantics_version": 1,
-  "written_utc": "2026-07-26T15:16:32+00:00",
+  "written_utc": "2026-07-26T15:16:33+00:00",
   "token_ids": [
-    818,
-    5279,
-    529,
-    7001,
-    563
+    146220,
+    239217,
+    127561,
+    79301,
+    237170
   ],
-  "backend_meta": {
-    "backend": "pytorch",
+  "framework_meta": {
+    "framework": "pytorch",
     "transformers_version": "5.14.1",
     "torch_version": "2.13.0+cu130",
     "cuda_device": "NVIDIA GeForce RTX 3060",
@@ -48,10 +48,10 @@
       "device_free_after_load_bytes": 2995650560
     },
     "run": {
-      "prompt_id": "short-factual",
-      "category": "short",
+      "prompt_id": "multi-ko",
+      "category": "multi",
       "n_tokens": 5,
-      "latency_seconds": 0.1488,
+      "latency_seconds": 0.0466,
       "peak_allocated_bytes": 9270939136,
       "vocab_size": 262144
     }

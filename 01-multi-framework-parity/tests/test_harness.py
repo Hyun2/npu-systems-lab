@@ -1,12 +1,12 @@
 """Self-check for the harness skeleton.
 
-Run:  python -m tests.test_harness      (from 01-multi-backend-parity/)
+Run:  python -m tests.test_harness      (from 01-multi-framework-parity/)
 
 Covers the three pieces that carry real logic. Everything else in the
 skeleton is declaration.
 
 The shift case is the one worth reading. It encodes the reason the
-comparator reports two families of metric: a backend that offsets every
+comparator reports two families of metric: a framework that offsets every
 logit by a constant produces a large max_abs_diff while behaving
 identically. If that assertion ever fails, the two families have stopped
 being distinguishable and the comparator can no longer tell "different
@@ -23,7 +23,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from harness.adapters.base import BackendAdapter, NonDeterministicBackend  # noqa: E402
+from harness.adapters.base import FrameworkAdapter, NonDeterministicFramework  # noqa: E402
 from harness.cache import load_logits, logit_path, save_logits  # noqa: E402
 from harness.compare import compare, kl_divergence, softmax  # noqa: E402
 from harness.inspect import group_parameters  # noqa: E402
@@ -75,7 +75,7 @@ def test_kl_is_asymmetric_and_finite_on_overlap() -> None:
     That matters for how results are read. `compare(ref, tgt)` measures
     KL(reference || target) -- how surprised the reference would be by the
     target's distribution. Swapping the arguments gives a different number
-    for the same pair of backends, so the direction has to stay fixed across
+    for the same pair of frameworks, so the direction has to stay fixed across
     the whole project or the values are not comparable to each other.
 
     Note the pair below is deliberately lopsided. A mirrored pair such as
@@ -114,7 +114,7 @@ def test_cache_roundtrip_and_versioned_path() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         p = save_logits(
             tmp, "google/gemma-4-E2B-it", "pytorch", "bf16", "short-factual",
-            arr, {"backend_version": "torch 2.13.0+cu130"}, token_ids=[1, 2, 3],
+            arr, {"framework_version": "torch 2.13.0+cu130"}, token_ids=[1, 2, 3],
         )
         assert p.exists()
 
@@ -128,12 +128,12 @@ def test_cache_roundtrip_and_versioned_path() -> None:
         back, meta = load_logits(tmp, "google/gemma-4-E2B-it", "pytorch", "bf16", "short-factual")
         assert np.array_equal(arr, back)
         assert meta["token_ids"] == [1, 2, 3]
-        assert meta["backend_meta"]["backend_version"] == "torch 2.13.0+cu130"
+        assert meta["framework_meta"]["framework_version"] == "torch 2.13.0+cu130"
         assert meta["vocab_size"] == 64
 
 
-class _FlakyAdapter(BackendAdapter):
-    """Returns a different value on the second call. Stands in for a backend
+class _FlakyAdapter(FrameworkAdapter):
+    """Returns a different value on the second call. Stands in for a framework
     with sampling left on, or a nondeterministic kernel."""
 
     def __init__(self, *, flaky: bool) -> None:
@@ -156,18 +156,18 @@ class _FlakyAdapter(BackendAdapter):
         return ""
 
     def meta(self) -> dict:
-        return {"backend": "fake"}
+        return {"framework": "fake"}
 
 
-def test_determinism_check_rejects_a_flaky_backend() -> None:
+def test_determinism_check_rejects_a_flaky_framework() -> None:
     try:
         _FlakyAdapter(flaky=True).load("dummy", "bf16")
-    except NonDeterministicBackend:
+    except NonDeterministicFramework:
         return
-    raise AssertionError("load() must reject a backend that cannot reproduce itself")
+    raise AssertionError("load() must reject a framework that cannot reproduce itself")
 
 
-def test_determinism_check_passes_a_stable_backend() -> None:
+def test_determinism_check_passes_a_stable_framework() -> None:
     _FlakyAdapter(flaky=False).load("dummy", "bf16")
 
 

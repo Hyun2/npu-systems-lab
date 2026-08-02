@@ -1,4 +1,4 @@
-"""Step 2 -- produce the reference logits every later backend is judged against.
+"""Step 2 -- produce the reference logits every later framework is judged against.
 
 Run on the GPU machine:
 
@@ -16,7 +16,7 @@ the card holds exactly one model at a time:
 
 Prompts are tokenised once, here, with the reference tokeniser. Adapters
 receive integers (D1) and the token ids travel into each sidecar, so a later
-session can prove two backends saw the same input.
+session can prove two frameworks saw the same input.
 """
 
 from __future__ import annotations

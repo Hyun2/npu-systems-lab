@@ -1,6 +1,6 @@
 {
   "model": "google/gemma-4-E2B-it",
-  "backend": "pytorch",
+  "framework": "pytorch",
   "precision": "bf16",
   "prompt_id": "long-technical",
   "vocab_size": 262144,
@@ -1858,8 +1858,8 @@
     563,
     600
   ],
-  "backend_meta": {
-    "backend": "pytorch",
+  "framework_meta": {
+    "framework": "pytorch",
     "transformers_version": "5.14.1",
     "torch_version": "2.13.0+cu130",
     "cuda_device": "NVIDIA GeForce RTX 3060",

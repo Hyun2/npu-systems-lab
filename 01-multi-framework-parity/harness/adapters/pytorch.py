@@ -1,6 +1,6 @@
 """The PyTorch reference adapter.
 
-Every other backend is measured against this one, so its job is not to be
+Every other framework is measured against this one, so its job is not to be
 fast but to be explainable: plain eager attention, no cache, no sampling,
 fp32 on the way out.
 
@@ -42,12 +42,12 @@ import torch
 import transformers
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
-from .base import BackendAdapter
+from .base import FrameworkAdapter
 
 __all__ = ["PyTorchAdapter", "text_config_of"]
 
-# The two precisions this backend serves. Quantised tags in `PRECISIONS`
-# belong to other backends; asking for one here is a mistake worth failing on.
+# The two precisions this framework serves. Quantised tags in `PRECISIONS`
+# belong to other frameworks; asking for one here is a mistake worth failing on.
 _DTYPES = {"bf16": torch.bfloat16, "fp16": torch.float16}
 
 
@@ -62,7 +62,7 @@ def text_config_of(config: Any) -> Any:
     return getattr(config, "text_config", None) or config
 
 
-class PyTorchAdapter(BackendAdapter):
+class PyTorchAdapter(FrameworkAdapter):
     """Reference logits from transformers.
 
     Not registered in `adapters/__init__.py` on purpose: importing it pulls in
@@ -97,7 +97,7 @@ class PyTorchAdapter(BackendAdapter):
         library would pick. A reference should compute attention the way the
         formula reads; sdpa and flash kernels reorder the reduction, and this
         project exists to measure exactly that kind of difference in the
-        backends being compared -- not to smuggle it into the baseline.
+        frameworks being compared -- not to smuggle it into the baseline.
         """
         if precision not in _DTYPES:
             raise ValueError(
@@ -163,7 +163,7 @@ class PyTorchAdapter(BackendAdapter):
         self._require_loaded()
         ids = torch.tensor([list(token_ids)], dtype=torch.long, device=self._model.device)
         # use_cache=False: nothing here is incremental, and a cache is one
-        # more place for a backend to differ from itself between calls.
+        # more place for a framework to differ from itself between calls.
         out = self._model(input_ids=ids, use_cache=False)
         return out.logits[0, -1].float().cpu().numpy()
 
@@ -178,7 +178,7 @@ class PyTorchAdapter(BackendAdapter):
         self._require_loaded()
         config = self._model.config
         return {
-            "backend": self.name,
+            "framework": self.name,
             "transformers_version": transformers.__version__,
             "torch_version": torch.__version__,
             "cuda_device": torch.cuda.get_device_name(self._device) if self._device.startswith("cuda") else "cpu",
@@ -204,7 +204,7 @@ class PyTorchAdapter(BackendAdapter):
     @property
     def tokenizer(self) -> Any:
         """The reference tokeniser. Callers tokenise once with this and feed
-        the same integers to every backend (D1)."""
+        the same integers to every framework (D1)."""
         self._require_loaded()
         return self._tokenizer
 

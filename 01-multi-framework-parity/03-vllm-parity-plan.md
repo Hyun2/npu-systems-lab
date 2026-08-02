@@ -10,7 +10,7 @@ date: 2026-08-02
 ## 개요
 
 PyTorch bf16 레퍼런스와 vLLM v0.26.0 bf16을 동일한 token IDs로 비교해,
-양자화가 없는 상태에서도 발생하는 백엔드 차이를 기준선으로 고정한다. 본 측정 전에
+양자화가 없는 상태에서도 발생하는 추론 프레임워크 차이를 기준선으로 고정한다. 본 측정 전에
 raw-logits 공개 API, Gemma 4 텍스트 전용 로드, 호스트↔컨테이너 격리, 공개 메타데이터 경계,
 재현성 manifest를 먼저 검증한다.
 
@@ -19,7 +19,7 @@ raw-logits 공개 API, Gemma 4 텍스트 전용 로드, 호스트↔컨테이너
 ## 문제 정의
 
 현재 하네스는 PyTorch 레퍼런스를 저장할 수 있지만 vLLM은 별도 Docker 환경에 있고,
-기존 `BackendAdapter`는 프로세스 밖 runner를 다루지 않는다. vLLM이 반환한 값이 정말 raw logits인지,
+기존 `FrameworkAdapter`는 프로세스 밖 runner를 다루지 않는다. vLLM이 반환한 값이 정말 raw logits인지,
 멀티모달 체크포인트에서 텍스트 tower만 로드됐는지, 결과를 만든 코드와 환경을 나중에
 복원할 수 있는지를 독립적으로 증명해야 한다. 이 증명 없이 만든 parity 수치는 후속 양자화·llama.cpp·
 OpenVINO 결과의 기준으로 쓸 수 없다.
@@ -150,7 +150,7 @@ flowchart LR
 
 **테스트 시나리오:**
 
-- 행복 경로: 허용된 모델·백엔드·버전·커널·메모리·hash만 든 manifest와 sidecar가 생성된다.
+- 행복 경로: 허용된 모델·추론 프레임워크·버전·커널·메모리·hash만 든 manifest와 sidecar가 생성된다.
 - 오류 경로: `HF_TOKEN`, 환경변수 덤프, 절대 경로, 예상하지 못한 key 중 하나가 있으면 파일을 생성하지 않는다.
 - 경계: 합성 프롬프트는 token IDs가 공개되고 비공개 입력은 token IDs가 공개되지 않는다.
 - 회귀: 원문 meta를 비공개로 보존해도 공개 sidecar의 기존 캐시 정보를 읽을 수 있다.
@@ -213,7 +213,7 @@ flowchart LR
 
 **접근:**
 
-- 호스트 어댑터는 runner 입출력·종료 상태를 검증하고 기존 `BackendAdapter`의 로드·로짓·meta·unload 의미를 유지한다.
+- 호스트 어댑터는 runner 입출력·종료 상태를 검증하고 기존 `FrameworkAdapter`의 로드·로짓·meta·unload 의미를 유지한다.
 - runner는 vLLM import·모델 상주·샘플링만 소유하고 비교·판정·공개 직렬화를 소유하지 않는다.
 - 첫 preflight는 1849토큰 입력을 `max_model_len=2048`로 무절단·무OOM 처리하고 vLLM이 보고한 KV 블록·실측 메모리를 남긴다. 이 preflight가 실패하면 baseline을 시작하지 않는다.
 - 어댑터·runner·parity·prompt 코드가 확정된 뒤 **baseline 실행 직전**에 새 baseline manifest를 생성하고 모든 baseline sidecar가 그 hash를 참조하게 한다.
@@ -238,7 +238,7 @@ flowchart LR
 
 - [ ] **Unit 5: baseline 해석·더미 어댑터·D9 동결**
 
-**목표:** 후속 양자화 결과가 인용할 임계값 입력을 남기고, 계약이 새 백엔드를 받을 수 있음을 동결 전에 증명한다.
+**목표:** 후속 양자화 결과가 인용할 임계값 입력을 남기고, 계약이 새 추론 프레임워크를 받을 수 있음을 동결 전에 증명한다.
 
 **요구사항:** R6, R8
 
@@ -277,9 +277,9 @@ flowchart LR
 - **상호작용 그래프:** 호스트 어댑터 → Docker runner → 원문 결과 → 공개 serializer → cache·compare로 이어진다.
 - **오류 전파:** runner 실패는 캐시 미생성으로, serializer 실패는 공개 파일 미생성으로, manifest 불일치는 결과 읽기 거부로 드러나야 한다.
 - **상태 생명주기:** 컨테이너 종료·GPU 해제·부분 파일 정리가 어댑터 컨텍스트 종료와 함께 일어나야 한다.
-- **API 표면:** 모든 백엔드의 `logits()`·`meta()`·lifecycle 의미는 같게 유지하고, `generate()`만 필수에서 선택으로 내린다.
+- **API 표면:** 모든 추론 프레임워크의 `logits()`·`meta()`·lifecycle 의미는 같게 유지하고, `generate()`만 필수에서 선택으로 내린다.
 - **통합 보장:** 로컬 자체 검사는 콘테이너 없이 계약·serializer·manifest를 검증하고, i-u 통합 검증이 실제 vLLM·GPU·파일 경계를 검증한다.
-- **유지되는 불변조건:** token IDs 입력, 1-D fp32 raw logits, 순차 백엔드 상주, 바이트 결정론성, 판정 없는 `compare()`는 바꾸지 않는다.
+- **유지되는 불변조건:** token IDs 입력, 1-D fp32 raw logits, 순차 추론 프레임워크 상주, 바이트 결정론성, 판정 없는 `compare()`는 바꾸지 않는다.
 
 ## 중단 조건과 위험
 
@@ -319,7 +319,7 @@ flowchart LR
 ## 참조
 
 - [`README.md`](README.md) -- 프로젝트 목표, D1~D9, 현재 코드 구조
-- `harness/adapters/base.py` -- 백엔드 계약과 결정론성 검사
+- `harness/adapters/base.py` -- 추론 프레임워크 계약과 결정론성 검사
 - `harness/adapters/pytorch.py` -- 텍스트 전용 레퍼런스 로드와 meta 패턴
 - `harness/cache.py` -- 버전별 logits 캐시와 sidecar
 - `harness/reference.py` -- PyTorch 레퍼런스 실행기
